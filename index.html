@@ -25,6 +25,8 @@ var D={"cols":110,"rows":117,"delay":60,"frames":["\n\n\n\n\n\n\n\n\n\n\n\n\n\n\
 var BAND=7.0, GAIN=6.0, NSX=0.075, NSY=0.045, NST=0.16;
 var DRIFT=0.55, HUE=0.045454545454545456, MORPH=40.0, HOLD=0.35, PAL=27.0;
 var BAMP=0.42, FAMP=0.14, LAMP=7.0;
+var DELAYPER=0.013, ARMLAG=0.4, ARMRATE=1.9;
+var STRSPEED=6.0, STRBAND=10.0;
 
 var V=D.frames.map(function(s){
   return s.replace(/S([0-9a-f]+)~/g,function(_,h){return new Array(parseInt(h,16)+1).join(" ")});
@@ -47,89 +49,137 @@ function vnoise(x,y,z){
 }
 function nfield(x,y,t){ return vnoise(x,y,t)*0.65 + vnoise(x*2.1,y*2.1,t*1.7)*0.35; }
 
-var LIFT=0;
 var w=document.getElementById("w"), L=[];
 for(var k=0;k<N;k++){ var p=document.createElement("pre"); w.appendChild(p); L.push(p); }
 var probe=document.createElement("span"); probe.id="m";
 probe.textContent=new Array(101).join("M"); document.body.appendChild(probe);
 
-/* one flat list of printable cells per frame, with their geometry precomputed */
-var CX=D.cols/2, CY=D.rows*0.28;
-/* store only index/row/col; the four analytic fields are cheaper to recompute
-   than to keep around (five Float32Arrays per frame cost ~20MB of heap) */
-var POS=V.map(function(s){
-  var p=[], row=0, col=0;
-  for(var i=0;i<s.length;i++){
-    var c=s.charCodeAt(i);
+/* ---- anatomy -------------------------------------------------------------
+   The bell is the largest blob of dense characters, found by flood fill.
+   The stingers are inked cells sitting in horizontal runs of three or less.
+   Everything else is oral arms and the diffuse tail. Done here rather than
+   shipped: the map would be 45KB gzipped, the scan is a few hundred ms. */
+var COLS=D.cols, ROWS=D.rows, DENSE=6;   /* ramp index 6 and up is solid */
+var POS=[], PART=[], DIST=[], BX=[], BY=[];
+function segment(f){
+  var s=V[f], idx=new Int32Array(ROWS*COLS), val=new Int8Array(ROWS*COLS);
+  var row=0, col=0, i, c;
+  for(i=0;i<ROWS*COLS;i++) idx[i]=-1;
+  for(i=0;i<s.length;i++){
+    c=s.charCodeAt(i);
     if(c===10){ row++; col=0; continue; }
-    if(c!==32) p.push(i,row,col);
+    if(c!==32){ var p=row*COLS+col; idx[p]=i; val[p]=" .:-=+*#%@".indexOf(s.charAt(i)); }
     col++;
   }
-  return Int32Array.from(p);
-});
+  /* largest connected component of dense cells */
+  var seen=new Uint8Array(ROWS*COLS), best=null, bestN=0, stack=[];
+  for(var q=0;q<ROWS*COLS;q++){
+    if(seen[q] || val[q]<DENSE) continue;
+    var comp=[], head=0; stack.length=0; stack.push(q); seen[q]=1;
+    while(head<stack.length){
+      var v=stack[head++]; comp.push(v);
+      var r=(v/COLS)|0, cc=v%COLS;
+      for(var dy=-1;dy<=1;dy++) for(var dx=-1;dx<=1;dx++){
+        var nr=r+dy, nc=cc+dx;
+        if(nr<0||nc<0||nr>=ROWS||nc>=COLS) continue;
+        var u=nr*COLS+nc;
+        if(!seen[u] && val[u]>=DENSE){ seen[u]=1; stack.push(u); }
+      }
+    }
+    if(comp.length>bestN){ bestN=comp.length; best=comp; }
+  }
+  var isBell=new Uint8Array(ROWS*COLS), sx=0, sy=0;
+  if(best) for(i=0;i<best.length;i++){ isBell[best[i]]=1; sx+=best[i]%COLS; sy+=(best[i]/COLS)|0; }
+  BX[f]= bestN? sx/bestN : COLS/2;
+  BY[f]= bestN? sy/bestN : ROWS*0.28;
+  /* run lengths, then classify */
+  var pos=[], part=[], dist=[];
+  for(row=0;row<ROWS;row++){
+    col=0;
+    while(col<COLS){
+      if(idx[row*COLS+col]<0){ col++; continue; }
+      var st=col;
+      while(col<COLS && idx[row*COLS+col]>=0) col++;
+      var len=col-st;
+      for(var x=st;x<col;x++){
+        var pp=row*COLS+x, kind = isBell[pp] ? 0 : (len<=3 ? 2 : 1);
+        pos.push(idx[pp], row, x); part.push(kind);
+        var ddx=x-BX[f], ddy=(row-BY[f])*0.62;
+        dist.push(Math.sqrt(ddx*ddx+ddy*ddy));
+      }
+    }
+  }
+  POS[f]=Int32Array.from(pos); PART[f]=Uint8Array.from(part); DIST[f]=Float32Array.from(dist);
+}
 var BLANK=V.map(function(s){ return s.replace(/[^\n]/g," "); });
 
-/* five shapes; weights walk around the ring so only two are ever mixed */
 var S=5;
-function weights(t){
-  var u=(t/MORPH*S)%S, wts=new Float32Array(S), tot=0, i, d;
+function weights(t, out){
+  var u=(t/MORPH*S)%S, tot=0, i, d, a;
   for(i=0;i<S;i++){
     d=Math.abs(u-i); if(d>S/2) d=S-d;
-    var a=Math.max(0,1-d/(1+HOLD));
-    a=sm(Math.min(1,a)); wts[i]=a; tot+=a;
+    a=sm(Math.max(0,Math.min(1,1-d/(1+HOLD)))); out[i]=a; tot+=a;
   }
-  for(i=0;i<S;i++) wts[i]/=(tot||1);
-  return wts;
+  for(i=0;i<S;i++) out[i]/=(tot||1);
 }
+var Wb=new Float32Array(S), Wa=new Float32Array(S);
 
-var buf=[];
+/* each part sits a different distance around the colour wheel */
+var PARTOFF=[0, (N>>1), (N>>2)];
+
+var buf=[], LIFT=0;
+function shapeVal(W, r, c, cx, cy, tt, band, gainT){
+  var v=tt*DRIFT, TAU=2*Math.PI;
+  var dx=c-cx, dy=(r-cy)*0.62;
+  if(W[0]) v += W[0]*(Math.sqrt(dx*dx+dy*dy)/band);
+  if(W[1]) v += W[1]*(r/band);
+  if(W[2]) v += W[2]*(c/band);
+  if(W[3]) v += W[3]*(((Math.atan2(dy,dx)/TAU+1)%1)*N*2);
+  if(W[4]) v += W[4]*(((nfield(c*NSX, r*NSY, gainT)-0.5)*GAIN+0.5)*N);
+  return v;
+}
 function paint(f,t){
-  var s=V[f], p=POS[f], b=BLANK[f], k,i;
+  if(!POS[f]) segment(f);
+  var s=V[f], p=POS[f], pt=PART[f], di=DIST[f], b=BLANK[f], k,i;
   for(k=0;k<N;k++) buf[k]=b.split("");
-  /* P: the animal's slow swell, one per 5.1s loop. Q: its weak bell contraction.
-     Both measured off the source frames, so the colour pumps in step with the swim. */
   var pu=D.P[f], fl=D.Q[f];
-  var band=BAND*(1 + BAMP*(2*pu-1) + FAMP*fl);
-  if(band<1.5) band=1.5;
+  var band=BAND*(1 + BAMP*(2*pu-1) + FAMP*fl); if(band<1.5) band=1.5;
   LIFT = LAMP*(2*pu-1);
-  var W=weights(t), ts=t*NST, drift=t*DRIFT;
-  var w0=W[0],w1=W[1],w2=W[2],w3=W[3],w4=W[4], needN=w4>0.001, TAU=2*Math.PI;
+  var cx=BX[f], cy=BY[f];
+  weights(t, Wb);                 /* the bell leads */
+  weights(t - MORPH*ARMLAG, Wa);  /* the arms lag behind it */
   for(i=0;i<p.length;i+=3){
-    var ix=p[i], r=p[i+1], c=p[i+2];
-    var dx=c-CX, dy=(r-CY)*0.62;
-    var v = drift;
-    if(w0) v += w0*(Math.sqrt(dx*dx+dy*dy)/band);
-    if(w1) v += w1*(r/band);
-    if(w2) v += w2*(c/band);
-    if(w3) v += w3*(((Math.atan2(dy,dx)/TAU+1)%1)*N*2);
-    if(needN) v += w4*(((nfield(c*NSX, r*NSY, ts)-0.5)*GAIN+0.5)*N);
-    var lay=(v|0)%N; if(lay<0) lay+=N;
+    var ix=p[i], r=p[i+1], c=p[i+2], j=i/3;
+    var kind=pt[j];
+    var td = t - di[j]*DELAYPER;              /* colour leaves the bell and travels out */
+    var v;
+    if(kind===2){
+      v = (r - td*STRSPEED)/STRBAND;          /* a pulse running down each stinger */
+    } else if(kind===0){
+      v = shapeVal(Wb, r, c, cx, cy, td, band, td*NST);
+    } else {
+      v = shapeVal(Wa, r, c, cx, cy, td*ARMRATE, band*0.8, td*NST*ARMRATE);
+    }
+    var lay=((v|0)+PARTOFF[kind])%N; if(lay<0) lay+=N;
     buf[lay][ix]=s.charAt(ix);
   }
   for(k=0;k<N;k++) L[k].textContent=buf[k].join("");
 }
-/* colour schemes: hue offsets from a rotating base, plus their own sat/light.
-   Each is expanded to N entries so schemes can be interpolated layer by layer. */
-function expand(hs, sat, li){
-  var o=[], k;
-  for(k=0;k<N;k++){
-    o.push([hs[k%hs.length],
-            sat[k%sat.length],
-            li[k%li.length]]);
-  }
-  return o;
-}
+
+function expand(hs,sat,li){ var o=[],k;
+  for(k=0;k<N;k++) o.push([hs[k%hs.length], sat[k%sat.length], li[k%li.length]]);
+  return o; }
 var SCHEMES=[
-  expand([0,45,90,135,180,225,270,315],[95],[63]),              /* full rainbow */
-  expand([0,180],[88],[66,54]),                                  /* complementary pair */
-  expand([0,120,240],[86],[64,58,68]),                           /* triad */
-  expand([0,14,28,42],[80],[70,62,54,66]),                       /* analogous, tight */
-  expand([0,205],[70,55],[76,58,68,46]),                         /* duotone, wide in value */
-  expand([12,36,330],[92],[66,58,70])                            /* warm split */
+  expand([0,45,90,135,180,225,270,315],[95],[63]),
+  expand([0,180],[88],[66,54]),
+  expand([0,120,240],[86],[64,58,68]),
+  expand([0,14,28,42],[80],[70,62,54,66]),
+  expand([0,205],[70,55],[76,58,68,46]),
+  expand([12,36,330],[92],[66,58,70])
 ];
 function arc(a,b,u){ var d=((b-a+540)%360)-180; return a+d*u; }
 function hues(t){
-  var S2=SCHEMES.length, u=(t/PAL*S2)%S2, i, k, wt, tot=0, W=new Float32Array(S2);
+  var S2=SCHEMES.length, u=(t/PAL*S2)%S2, i,k,wt,tot=0, W=new Float32Array(S2);
   for(i=0;i<S2;i++){ var d=Math.abs(u-i); if(d>S2/2) d=S2-d;
     wt=sm(Math.max(0,Math.min(1,1-d))); W[i]=wt; tot+=wt; }
   for(i=0;i<S2;i++) W[i]/=(tot||1);
@@ -139,7 +189,6 @@ function hues(t){
     for(i=0;i<S2;i++){
       if(!W[i]) continue;
       var e=SCHEMES[i][k];
-      /* running weighted mean along the shortest arc, so hues never sweep the long way */
       h = acc ? arc(h, e[0], W[i]/(acc+W[i])) : e[0];
       acc += W[i]; sa += W[i]*e[1]; li += W[i]*e[2];
     }
@@ -154,13 +203,18 @@ function fit(){
   probe.style.fontFamily=cs.fontFamily; probe.style.fontWeight=cs.fontWeight;
   probe.style.letterSpacing=cs.letterSpacing; probe.style.fontSize="100px";
   wR=probe.getBoundingClientRect().width/100/100; hR=wR/ASPECT;
-  var fs=Math.min(innerWidth*0.96/(D.cols*wR), innerHeight*0.96/(D.rows*hR));
+  var fs=Math.min(innerWidth*0.96/(COLS*wR), innerHeight*0.96/(ROWS*hR));
   for(var k=0;k<N;k++){ L[k].style.fontSize=fs+"px"; L[k].style.lineHeight=(fs*hR)+"px"; }
-  w.style.width=(D.cols*wR*fs)+"px"; w.style.height=(D.rows*hR*fs)+"px";
+  w.style.width=(COLS*wR*fs)+"px"; w.style.height=(ROWS*hR*fs)+"px";
 }
 addEventListener("resize",fit,{passive:true}); fit();
 
 hues(0); paint(0,0);
+var pre=1;
+(function warm(){ var t0=performance.now();
+  while(pre<V.length && performance.now()-t0<12){ if(!POS[pre]) segment(pre); pre++; }
+  if(pre<V.length) setTimeout(warm,0); })();
+
 var i=0,last=0;
 if(!matchMedia("(prefers-reduced-motion: reduce)").matches){
   requestAnimationFrame(function tick(t){
