@@ -136,7 +136,7 @@
     font-family: var(--display); font-size: 26px; font-weight: 700;
   }
 
-  /* Reveal: the scratchcard */
+  /* Reveal: the answer card */
   .ticket {
     position: relative;
     border-radius: 14px;
@@ -145,9 +145,6 @@
     padding: 18px 18px 16px;
     margin: 6px 0 16px;
     overflow: hidden;
-    min-height: 210px;
-    user-select: none;
-    -webkit-user-select: none;
   }
   .ticket .answer { font-family: var(--display); font-size: 26px; font-weight: 700; line-height: 1.1; }
   .ticket .why { margin-top: 10px; font-size: 15px; line-height: 1.45; color: #2B3550; }
@@ -160,11 +157,6 @@
   .result.right { background: #D3ECDD; }
   .result.right strong { color: #1F6B42; }
   .result.wrong strong { color: #8E0B20; }
-  canvas.foil {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    touch-action: none; cursor: crosshair; border-radius: 14px;
-  }
-  .hint { text-align: center; color: var(--slate); font-size: 14px; margin-bottom: 10px; }
   .row { display: flex; gap: 10px; margin-top: auto; }
   .row button { flex: 1; }
   .row .primary { margin-top: 0; }
@@ -189,7 +181,7 @@
   <section class="screen on" id="start">
     <div class="intro">
       <h1>Dinner quiz: iGaming edition</h1>
-      <p>Pass the phone. You each answer in secret, then scratch the ticket to see who knew it.</p>
+      <p>Pass the phone and answer in secret. The answer appears once you have both picked.</p>
     </div>
     <label for="p1">Player one</label>
     <input type="text" id="p1" value="Nate" maxlength="16" autocomplete="off">
@@ -227,15 +219,12 @@
   <section class="screen" id="reveal">
     <div class="board" id="board2"></div>
     <div class="question" id="qtext2" style="font-size:19px;margin-bottom:12px"></div>
-    <p class="hint" id="hint">Scratch the ticket to reveal</p>
     <div class="ticket" id="ticket">
       <div class="answer" id="ans"></div>
       <div class="why" id="why"></div>
       <div class="results" id="res"></div>
-      <canvas class="foil" id="foil"></canvas>
     </div>
     <div class="row">
-      <button id="skipScratch">Just show it</button>
       <button class="primary" id="next">Next question</button>
     </div>
   </section>
@@ -316,7 +305,6 @@ let qi = 0;
 let turn = 0;
 let picks = [null, null];
 let score = [0, 0];
-let pending = null;
 
 function shuffle(arr) {
   const a = arr.slice();
@@ -400,8 +388,8 @@ function choose(i) {
 function reveal() {
   const q = deck[qi];
   const right = picks.map(p => p === q.a);
+  right.forEach((r, i) => { if (r) score[i]++; });
   $("board2").innerHTML = boardHTML();
-  pending = right;
   $("qtext2").textContent = q.q;
   $("ans").textContent = q.o[q.a];
   $("why").textContent = q.w;
@@ -410,98 +398,13 @@ function reveal() {
   ).join("");
   $("next").textContent = qi + 1 < deck.length ? "Next question" : "See who won";
   $("ticket").classList.remove("cleared");
-  $("hint").style.visibility = "visible";
-  $("skipScratch").style.visibility = "visible";
   show("reveal");
-  window.scrollTo(0, 0);
-  requestAnimationFrame(paintFoil);
-}
-
-// ---------- Scratchcard foil ----------
-const foil = $("foil");
-let ctx, scratching = false, lastCheck = 0;
-
-function paintFoil() {
-  const rect = foil.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  foil.width = Math.round(rect.width * dpr);
-  foil.height = Math.round(rect.height * dpr);
-  foil.style.display = "block";
-  ctx = foil.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.globalCompositeOperation = "source-over";
-
-  const g = ctx.createLinearGradient(0, 0, rect.width, rect.height);
-  g.addColorStop(0, "#B8922A");
-  g.addColorStop(0.5, "#E3C766");
-  g.addColorStop(1, "#A07A1C");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, rect.width, rect.height);
-
-  // Fine diagonal texture so it reads as foil.
-  ctx.strokeStyle = "rgba(255,255,255,.12)";
-  ctx.lineWidth = 1;
-  for (let x = -rect.height; x < rect.width; x += 7) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + rect.height, rect.height); ctx.stroke();
-  }
-  ctx.fillStyle = "rgba(20,33,61,.78)";
-  ctx.font = "700 26px " + getComputedStyle(document.documentElement).getPropertyValue("--display");
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("Scratch here", rect.width / 2, rect.height / 2 - 10);
-  ctx.font = "15px " + getComputedStyle(document.documentElement).getPropertyValue("--body");
-  ctx.fillText("Answer and scores underneath", rect.width / 2, rect.height / 2 + 18);
-
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 42;
-}
-
-function pos(e) {
-  const r = foil.getBoundingClientRect();
-  return { x: e.clientX - r.left, y: e.clientY - r.top };
-}
-
-foil.addEventListener("pointerdown", e => {
-  scratching = true;
-  foil.setPointerCapture(e.pointerId);
-  const p = pos(e);
-  ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 0.1, p.y + 0.1); ctx.stroke();
-});
-foil.addEventListener("pointermove", e => {
-  if (!scratching) return;
-  const p = pos(e);
-  ctx.lineTo(p.x, p.y); ctx.stroke();
-  const now = performance.now();
-  if (now - lastCheck > 180) { lastCheck = now; checkCleared(); }
-});
-["pointerup","pointercancel"].forEach(t => foil.addEventListener(t, () => { scratching = false; checkCleared(); }));
-
-function checkCleared() {
-  const w = foil.width, h = foil.height;
-  const data = ctx.getImageData(0, 0, w, h).data;
-  let clear = 0, total = 0;
-  for (let i = 3; i < data.length; i += 4 * 24) { total++; if (data[i] === 0) clear++; }
-  if (clear / total > 0.45) clearFoil();
-}
-
-function clearFoil() {
-  if (pending) {
-    pending.forEach((r, i) => { if (r) score[i]++; });
-    pending = null;
-    $("board2").innerHTML = boardHTML();
-  }
-  foil.style.display = "none";
+  void $("ticket").offsetWidth;
   $("ticket").classList.add("cleared");
-  $("hint").style.visibility = "hidden";
-  $("skipScratch").style.visibility = "hidden";
+  window.scrollTo(0, 0);
 }
-
-$("skipScratch").addEventListener("click", clearFoil);
 
 $("next").addEventListener("click", () => {
-  if (foil.style.display !== "none") { clearFoil(); return; }
   qi++;
   if (qi < deck.length) startQuestion();
   else finish();
