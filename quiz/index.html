@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14213D">
+<title>Dinner Quiz: iGaming Edition</title>
+<style>
+  :root {
+    --felt: #14213D;
+    --felt-deep: #0E1830;
+    --brass: #C9A227;
+    --chip: #C8102E;
+    --chalk: #EDEFF2;
+    --slate: #8D99AE;
+    --win: #3FA36B;
+    --display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", "Helvetica Neue", sans-serif;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: radial-gradient(120% 80% at 50% 0%, #1C2E54 0%, var(--felt) 45%, var(--felt-deep) 100%);
+    color: var(--chalk);
+    font-family: var(--body);
+    font-size: 17px;
+    line-height: 1.45;
+    -webkit-tap-highlight-color: transparent;
+  }
+  main {
+    max-width: 520px;
+    margin: 0 auto;
+    min-height: 100%;
+    padding: 20px 18px 28px;
+    display: flex;
+    flex-direction: column;
+  }
+  .screen { display: none; flex: 1; flex-direction: column; }
+  .screen.on { display: flex; }
+
+  h1, h2 {
+    font-family: var(--display);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    margin: 0;
+    line-height: 1.05;
+  }
+  h1 { font-size: 46px; }
+  h2 { font-size: 30px; }
+  p { margin: 0; }
+  .muted { color: var(--slate); }
+
+  /* Scoreboard strip */
+  .board {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid rgba(201,162,39,.35);
+    padding-bottom: 10px;
+    margin-bottom: 18px;
+    font-family: var(--display);
+    font-size: 20px;
+  }
+  .board b { color: var(--brass); font-size: 26px; margin-left: 6px; }
+  .board .q { color: var(--slate); font-family: var(--body); font-size: 14px; }
+
+  /* Start */
+  .intro { margin: 18px 0 28px; }
+  .intro p { margin-top: 12px; color: var(--slate); max-width: 34ch; }
+  label { display: block; font-size: 15px; color: var(--slate); margin: 16px 0 6px; }
+  input[type=text] {
+    width: 100%;
+    font: inherit;
+    color: var(--chalk);
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(237,239,242,.18);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  input[type=text]:focus { outline: 2px solid var(--brass); outline-offset: 1px; }
+  .lengths { display: flex; gap: 8px; }
+  .lengths button { flex: 1; }
+
+  button {
+    font: inherit;
+    border: none;
+    cursor: pointer;
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--chalk);
+    background: rgba(255,255,255,.07);
+  }
+  button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  button.picked { background: var(--brass); color: var(--felt-deep); font-weight: 600; }
+  .primary {
+    margin-top: auto;
+    width: 100%;
+    background: var(--chip);
+    font-weight: 700;
+    font-size: 18px;
+    padding: 16px;
+  }
+  .primary:active { transform: translateY(1px); }
+  .spacer { flex: 1; min-height: 24px; }
+
+  /* Question */
+  .cat { color: var(--brass); font-size: 14px; margin-bottom: 8px; }
+  .who { font-family: var(--display); font-size: 22px; margin-bottom: 14px; }
+  .question { font-size: 22px; line-height: 1.3; margin-bottom: 20px; font-weight: 600; }
+  .options { display: grid; gap: 10px; }
+  .options button {
+    text-align: left;
+    padding: 14px 16px;
+    border: 1px solid rgba(237,239,242,.14);
+    line-height: 1.3;
+  }
+  .options button:active { background: rgba(201,162,39,.25); }
+
+  /* Pass screen */
+  .pass { justify-content: center; text-align: center; gap: 14px; }
+  .pass .chip {
+    width: 110px; height: 110px; margin: 0 auto 10px;
+    border-radius: 50%;
+    background:
+      repeating-conic-gradient(var(--chalk) 0 15deg, var(--chip) 15deg 45deg);
+    display: grid; place-items: center;
+    box-shadow: inset 0 0 0 10px var(--chip);
+  }
+  .pass .chip span {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: var(--chip); border: 2px dashed rgba(237,239,242,.7);
+    display: grid; place-items: center;
+    font-family: var(--display); font-size: 26px; font-weight: 700;
+  }
+
+  /* Reveal: the scratchcard */
+  .ticket {
+    position: relative;
+    border-radius: 14px;
+    background: var(--chalk);
+    color: var(--felt-deep);
+    padding: 18px 18px 16px;
+    margin: 6px 0 16px;
+    overflow: hidden;
+    min-height: 210px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .ticket .answer { font-family: var(--display); font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .ticket .why { margin-top: 10px; font-size: 15px; line-height: 1.45; color: #2B3550; }
+  .results { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .result {
+    border-radius: 10px; padding: 10px 12px; font-size: 15px;
+    background: #DDE1E7;
+  }
+  .result strong { display: block; font-family: var(--display); font-size: 19px; }
+  .result.right { background: #D3ECDD; }
+  .result.right strong { color: #1F6B42; }
+  .result.wrong strong { color: #8E0B20; }
+  canvas.foil {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    touch-action: none; cursor: crosshair; border-radius: 14px;
+  }
+  .hint { text-align: center; color: var(--slate); font-size: 14px; margin-bottom: 10px; }
+  .row { display: flex; gap: 10px; margin-top: auto; }
+  .row button { flex: 1; }
+  .row .primary { margin-top: 0; }
+
+  /* End */
+  .final { text-align: center; justify-content: center; gap: 10px; }
+  .final .big { font-family: var(--display); font-size: 64px; color: var(--brass); line-height: 1; }
+  .final .line { color: var(--slate); max-width: 30ch; margin: 0 auto; }
+  .tally { display: flex; justify-content: center; gap: 28px; margin: 18px 0 6px; font-family: var(--display); font-size: 22px; }
+  .tally b { display: block; font-size: 40px; color: var(--chalk); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .ticket.cleared .answer { animation: pop .35s ease-out; }
+    @keyframes pop { from { transform: scale(.96); opacity: .5; } to { transform: scale(1); opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- START -->
+  <section class="screen on" id="start">
+    <div class="intro">
+      <h1>Dinner quiz: iGaming edition</h1>
+      <p>Pass the phone. You each answer in secret, then scratch the ticket to see who knew it.</p>
+    </div>
+    <label for="p1">Player one</label>
+    <input type="text" id="p1" value="Nate" maxlength="16" autocomplete="off">
+    <label for="p2">Player two</label>
+    <input type="text" id="p2" value="Mo" maxlength="16" autocomplete="off">
+    <label>How many questions</label>
+    <div class="lengths" id="lengths">
+      <button data-n="10">10</button>
+      <button data-n="15" class="picked">15</button>
+      <button data-n="20">20</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="primary" id="go">Deal the first question</button>
+  </section>
+
+  <!-- PASS -->
+  <section class="screen pass" id="pass">
+    <div class="chip"><span id="passInitial">M</span></div>
+    <h2 id="passTitle">Hand the phone to Mo</h2>
+    <p class="muted" id="passSub">No peeking at the screen until it's your turn.</p>
+    <div class="spacer"></div>
+    <button class="primary" id="passGo">I'm Mo, show me the question</button>
+  </section>
+
+  <!-- QUESTION -->
+  <section class="screen" id="ask">
+    <div class="board" id="board1"></div>
+    <div class="cat" id="cat"></div>
+    <div class="who" id="who"></div>
+    <div class="question" id="qtext"></div>
+    <div class="options" id="opts"></div>
+  </section>
+
+  <!-- REVEAL -->
+  <section class="screen" id="reveal">
+    <div class="board" id="board2"></div>
+    <div class="question" id="qtext2" style="font-size:19px;margin-bottom:12px"></div>
+    <p class="hint" id="hint">Scratch the ticket to reveal</p>
+    <div class="ticket" id="ticket">
+      <div class="answer" id="ans"></div>
+      <div class="why" id="why"></div>
+      <div class="results" id="res"></div>
+      <canvas class="foil" id="foil"></canvas>
+    </div>
+    <div class="row">
+      <button id="skipScratch">Just show it</button>
+      <button class="primary" id="next">Next question</button>
+    </div>
+  </section>
+
+  <!-- END -->
+  <section class="screen final" id="end">
+    <div class="big" id="winner"></div>
+    <p class="line" id="winLine"></p>
+    <div class="tally" id="tally"></div>
+    <p class="muted" id="loserLine" style="margin-top:6px"></p>
+    <div class="spacer"></div>
+    <button class="primary" id="again">Play another round</button>
+  </section>
+
+</main>
+
+<script>
+const BANK = [
+  // The money
+  {c:"The money", q:"What is GGR?", o:["Total amount wagered","Wagers minus winnings paid out","Deposits minus withdrawals","Revenue after bonus cost"], a:1, w:"Gross gaming revenue is what the house keeps before bonuses, taxes and fees."},
+  {c:"The money", q:"NGR is usually GGR minus what?", o:["Marketing spend","Affiliate fees only","Bonus cost (and often taxes and fees)","Payment processing"], a:2, w:"Net gaming revenue strips out bonus cost, which is why every free spin is watched so closely."},
+  {c:"The money", q:"An operator takes €1,000,000 in bets and pays out €950,000. What's the hold?", o:["95%","50%","5%","0.5%"], a:2, w:"Hold is GGR as a share of handle: €50k on €1m is 5%."},
+  {c:"The money", q:"What does FTD stand for?", o:["First-time depositor","Free tournament draw","Fixed-term deposit","Final table data"], a:0, w:"The first deposit is the key acquisition milestone, far more than a registration."},
+  {c:"The money", q:"How is \"theo\" calculated?", o:["Wins divided by bets","Amount wagered times house edge","Deposits times RTP","GGR minus bonuses"], a:1, w:"Theoretical win is what the player should lose on average, used to value VIPs."},
+  {c:"The money", q:"A slot has 96% RTP. What does that mean?", o:["96% of spins win something","Over the long run it pays back about 96 of every 100 wagered","The player keeps 96% of their deposit","The operator's hold is 96%"], a:1, w:"Return to player is a long-run theoretical average, not a promise for any session."},
+
+  // Bonuses
+  {c:"Bonuses", q:"A €10 bonus has a 35x wagering requirement. How much must the player bet before withdrawing?", o:["€35","€45","€350","€3,500"], a:2, w:"35 times €10 is €350 of play through the bonus."},
+  {c:"Bonuses", q:"What makes a bonus \"sticky\"?", o:["It can't be withdrawn and is removed when you cash out","It only works on one game","It renews every week","It carries no wagering"], a:0, w:"Sticky bonuses boost the balance but vanish at withdrawal. Non-sticky ones play real money first."},
+  {c:"Bonuses", q:"For wagering, which game typically contributes least?", o:["Slots","Scratchcards","Blackjack","Crash games"], a:2, w:"Low-edge table games often count 10% or less, so players can't clear bonuses cheaply."},
+  {c:"Bonuses", q:"What is rakeback?", o:["A refund of losses","A share of the house edge a player generated, given back","A poker-only freeroll","A deposit match"], a:1, w:"Cashback refunds losses; rakeback returns a slice of the edge whether you won or lost."},
+  {c:"Bonuses", q:"In a multiplier tournament, how are players ranked?", o:["Total amount wagered","Number of spins","Biggest win as a multiple of stake","Net profit"], a:2, w:"Multiplier races let small stakes compete with high rollers, which is why operators like them."},
+
+  // Tech stack
+  {c:"The stack", q:"What does PAM stand for?", o:["Payment authorisation module","Player account management","Promotions and missions","Progressive award manager"], a:1, w:"The PAM holds accounts, balances, limits and history. It's the operator's source of truth."},
+  {c:"The stack", q:"What runs the certified game logic and RNG?", o:["The CRM","The bonus engine","The RGS (remote game server)","The PAM"], a:2, w:"The studio's remote game server generates results; the operator's wallet moves the money."},
+  {c:"The stack", q:"What is a seamless wallet?", o:["A crypto wallet","One operator balance debited and credited on every bet in real time","A separate balance per game provider","A bonus-only balance"], a:1, w:"Games call the operator's wallet per round instead of holding their own balance."},
+  {c:"The stack", q:"Which of these is a content aggregator?", o:["GAMSTOP","SOFTSWISS Game Aggregator","Spelinspektionen","Optimove"], a:1, w:"Aggregators give operators thousands of games through one integration."},
+
+  // Regulation
+  {c:"Regulation", q:"GAMSTOP is the self-exclusion scheme for which market?", o:["Sweden","Great Britain","Germany","Netherlands"], a:1, w:"Spelpaus is Sweden, OASIS is Germany, CRUKS is the Netherlands."},
+  {c:"Regulation", q:"CRUKS is the self-exclusion register in...", o:["Spain","Netherlands","Portugal","Denmark"], a:1, w:"The Dutch regulator, the KSA, runs it."},
+  {c:"Regulation", q:"Which regulator oversees the Netherlands?", o:["MGA","DGOJ","KSA (Kansspelautoriteit)","SRIJ"], a:2, w:"MGA is Malta, DGOJ is Spain, SRIJ is Portugal."},
+  {c:"Regulation", q:"Sweden famously limits bonuses to...", o:["€100 per month","Only the first play occasion","Sportsbook only","Players over 25"], a:1, w:"Ongoing cash-style bonuses are out, so non-cash progression gets interesting there."},
+  {c:"Regulation", q:"Ontario's regulated iGaming market is overseen by the AGCO and which body?", o:["iGaming Ontario","Loto-Québec","Kahnawà:ke Gaming Commission","Canadian Gaming Association"], a:0, w:"iGaming Ontario conducts and manages the market; the AGCO regulates it."},
+  {c:"Regulation", q:"Great Britain's online slot stake limit for players aged 25 and over is...", o:["£2","£5","£10","No limit"], a:1, w:"It's £5 per spin for 25 and over, and £2 for 18 to 24 year olds."},
+  {c:"Regulation", q:"Which 2018 US Supreme Court case opened the door to state sports betting?", o:["Murphy v. NCAA","Carpenter v. United States","NCAA v. Alston","Wire Act ruling"], a:0, w:"It struck down PASPA, and states began legalising one by one."},
+  {c:"Regulation", q:"Which is a common offshore licence for grey-market operators?", o:["Curaçao","Ontario","Sweden","Portugal"], a:0, w:"Grey-market sites often serve players from an offshore licence without local approval."},
+
+  // Sweeps and social
+  {c:"Sweeps and social", q:"In a US sweepstakes casino, which currency can be redeemed for cash prizes?", o:["Gold Coins","Sweepstakes Coins","Both","Neither"], a:1, w:"Gold Coins are bought and played for fun. Sweeps Coins are given away and redeemable."},
+  {c:"Sweeps and social", q:"Why are Sweeps Coins never sold directly?", o:["Card networks forbid it","Selling them would make it gambling rather than a promotion","They're too expensive to print","They expire too fast"], a:1, w:"The \"no purchase necessary\" structure is what keeps the model legal, where it is legal."},
+  {c:"Sweeps and social", q:"What free welcome does McLuck give on signup?", o:["1,000 GC","7,500 GC plus 2.5 SC","50,000 GC plus 25 SC","100 free spins"], a:1, w:"Then it immediately upsells 50,000 GC plus 25 SC for $9.99."},
+  {c:"Sweeps and social", q:"What's the top rank in Modo's VIP ladder?", o:["Cosmic Diamond","Platinum","Black Diamond (invitation only)","Legend"], a:2, w:"Steel, Bronze, Silver, Gold, Diamond, Cosmic Diamond, then invitation-only Black Diamond with dedicated hosts."},
+  {c:"Sweeps and social", q:"On Modo, higher VIP ranks get \"streak repairs\". What are they?", o:["Free spins after a loss","A few monthly saves that keep your daily login streak alive","Bonus refunds","Faster withdrawals"], a:1, w:"Up to three a month at Diamond. A very video game idea."},
+  {c:"Sweeps and social", q:"Social casino revenue comes mainly from...", o:["Cash-out fees","Selling virtual coins that can't be cashed out","Advertising only","Wagering tax rebates"], a:1, w:"No cash-out means no gambling licence, and purchases fund the business."},
+
+  // Competitors and industry
+  {c:"The market", q:"Thunderbite is owned by which CRM company?", o:["Optimove","Fast Track","Xtremepush","Braze"], a:2, w:"XP Gamify bundles Thunderbite's free-to-play games into Xtremepush's CRM."},
+  {c:"The market", q:"Thunderbite's quoted list price for its gamification module is...", o:["$1k a month","$12k a month flat","$50k a year","Revenue share only"], a:1, w:"Plus $6k a month per free-to-play game, and 50% more per extra brand."},
+  {c:"The market", q:"CompetitionLabs rebranded to what name in 2022?", o:["Promofy","ZIQNI","Captain Up","Spin Pass"], a:1, w:"The CompetitionLabs name is back for iGaming today."},
+  {c:"The market", q:"In CompetitionLabs-speak, what is a Sub-Space?", o:["A private tournament","An isolated workspace per brand or market","A loot box","A widget theme"], a:1, w:"Each has its own data, campaigns and credentials, at €2,990 a year each beyond the first."},
+  {c:"The market", q:"What drives CompetitionLabs' pricing tiers most?", o:["Number of staff seats","Peak events per second","Number of games","GGR share"], a:1, w:"Starter is 50 EPS for €1k a month; Growth is 200 EPS for €5k."},
+  {c:"The market", q:"Which studio created the Megaways mechanic?", o:["Pragmatic Play","Big Time Gaming","NetEnt","Hacksaw Gaming"], a:1, w:"It's licensed to many other studios."},
+  {c:"The market", q:"The crash game Aviator was made by...", o:["Spribe","Evolution","Play'n GO","Push Gaming"], a:0, w:"It helped turn crash games into a category of their own."},
+  {c:"The market", q:"Evolution is best known for...", o:["Sportsbook trading","Live dealer casino","Payment processing","Affiliate marketing"], a:1, w:"Live roulette, blackjack and game shows streamed from studios."},
+  {c:"The market", q:"Promofy claims a branded promotion can go live in...", o:["Under 15 minutes","A day","A week","30 days"], a:0, w:"That's the no-code bar every gamification vendor gets measured against."}
+];
+
+const $ = id => document.getElementById(id);
+const screens = ["start","pass","ask","reveal","end"];
+const show = id => screens.forEach(s => $(s).classList.toggle("on", s === id));
+
+let players = ["Nate","Mo"];
+let rounds = 15;
+let deck = [];
+let qi = 0;
+let turn = 0;
+let picks = [null, null];
+let score = [0, 0];
+let pending = null;
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Shuffle options too, keeping track of the right one.
+function prepare(q) {
+  const order = shuffle(q.o.map((_, i) => i));
+  return { c: q.c, q: q.q, w: q.w, o: order.map(i => q.o[i]), a: order.indexOf(q.a) };
+}
+
+function boardHTML() {
+  return `<span>${esc(players[0])}<b>${score[0]}</b></span>` +
+         `<span class="q">Question ${qi + 1} of ${deck.length}</span>` +
+         `<span>${esc(players[1])}<b>${score[1]}</b></span>`;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]));
+}
+
+$("lengths").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  rounds = Number(b.dataset.n);
+  [...$("lengths").children].forEach(x => x.classList.toggle("picked", x === b));
+});
+
+$("go").addEventListener("click", () => {
+  players = [$("p1").value.trim() || "Player one", $("p2").value.trim() || "Player two"];
+  deck = shuffle(BANK).slice(0, Math.min(rounds, BANK.length)).map(prepare);
+  qi = 0; score = [0, 0];
+  startQuestion();
+});
+
+function startQuestion() {
+  picks = [null, null];
+  turn = 0;
+  askFor(0);
+}
+
+function askFor(p) {
+  turn = p;
+  const q = deck[qi];
+  $("board1").innerHTML = boardHTML();
+  $("cat").textContent = q.c;
+  $("who").textContent = `${players[p]}, your answer`;
+  $("qtext").textContent = q.q;
+  const opts = $("opts");
+  opts.innerHTML = "";
+  q.o.forEach((text, i) => {
+    const b = document.createElement("button");
+    b.textContent = text;
+    b.addEventListener("click", () => choose(i));
+    opts.appendChild(b);
+  });
+  show("ask");
+  window.scrollTo(0, 0);
+}
+
+function choose(i) {
+  picks[turn] = i;
+  if (turn === 0) {
+    const other = players[1];
+    $("passInitial").textContent = other.charAt(0).toUpperCase();
+    $("passTitle").textContent = `Hand the phone to ${other}`;
+    $("passSub").textContent = "No peeking at the screen until it's your turn.";
+    $("passGo").textContent = `I'm ${other}, show me the question`;
+    $("passGo").onclick = () => askFor(1);
+    show("pass");
+  } else {
+    reveal();
+  }
+}
+
+function reveal() {
+  const q = deck[qi];
+  const right = picks.map(p => p === q.a);
+  $("board2").innerHTML = boardHTML();
+  pending = right;
+  $("qtext2").textContent = q.q;
+  $("ans").textContent = q.o[q.a];
+  $("why").textContent = q.w;
+  $("res").innerHTML = players.map((name, i) =>
+    `<div class="result ${right[i] ? "right" : "wrong"}"><strong>${esc(name)}: ${right[i] ? "right" : "wrong"}</strong>${right[i] ? "Point scored" : "Picked: " + esc(q.o[picks[i]])}</div>`
+  ).join("");
+  $("next").textContent = qi + 1 < deck.length ? "Next question" : "See who won";
+  $("ticket").classList.remove("cleared");
+  $("hint").style.visibility = "visible";
+  $("skipScratch").style.visibility = "visible";
+  show("reveal");
+  window.scrollTo(0, 0);
+  requestAnimationFrame(paintFoil);
+}
+
+// ---------- Scratchcard foil ----------
+const foil = $("foil");
+let ctx, scratching = false, lastCheck = 0;
+
+function paintFoil() {
+  const rect = foil.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  foil.width = Math.round(rect.width * dpr);
+  foil.height = Math.round(rect.height * dpr);
+  foil.style.display = "block";
+  ctx = foil.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.globalCompositeOperation = "source-over";
+
+  const g = ctx.createLinearGradient(0, 0, rect.width, rect.height);
+  g.addColorStop(0, "#B8922A");
+  g.addColorStop(0.5, "#E3C766");
+  g.addColorStop(1, "#A07A1C");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, rect.width, rect.height);
+
+  // Fine diagonal texture so it reads as foil.
+  ctx.strokeStyle = "rgba(255,255,255,.12)";
+  ctx.lineWidth = 1;
+  for (let x = -rect.height; x < rect.width; x += 7) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + rect.height, rect.height); ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(20,33,61,.78)";
+  ctx.font = "700 26px " + getComputedStyle(document.documentElement).getPropertyValue("--display");
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Scratch here", rect.width / 2, rect.height / 2 - 10);
+  ctx.font = "15px " + getComputedStyle(document.documentElement).getPropertyValue("--body");
+  ctx.fillText("Answer and scores underneath", rect.width / 2, rect.height / 2 + 18);
+
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 42;
+}
+
+function pos(e) {
+  const r = foil.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+foil.addEventListener("pointerdown", e => {
+  scratching = true;
+  foil.setPointerCapture(e.pointerId);
+  const p = pos(e);
+  ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + 0.1, p.y + 0.1); ctx.stroke();
+});
+foil.addEventListener("pointermove", e => {
+  if (!scratching) return;
+  const p = pos(e);
+  ctx.lineTo(p.x, p.y); ctx.stroke();
+  const now = performance.now();
+  if (now - lastCheck > 180) { lastCheck = now; checkCleared(); }
+});
+["pointerup","pointercancel"].forEach(t => foil.addEventListener(t, () => { scratching = false; checkCleared(); }));
+
+function checkCleared() {
+  const w = foil.width, h = foil.height;
+  const data = ctx.getImageData(0, 0, w, h).data;
+  let clear = 0, total = 0;
+  for (let i = 3; i < data.length; i += 4 * 24) { total++; if (data[i] === 0) clear++; }
+  if (clear / total > 0.45) clearFoil();
+}
+
+function clearFoil() {
+  if (pending) {
+    pending.forEach((r, i) => { if (r) score[i]++; });
+    pending = null;
+    $("board2").innerHTML = boardHTML();
+  }
+  foil.style.display = "none";
+  $("ticket").classList.add("cleared");
+  $("hint").style.visibility = "hidden";
+  $("skipScratch").style.visibility = "hidden";
+}
+
+$("skipScratch").addEventListener("click", clearFoil);
+
+$("next").addEventListener("click", () => {
+  if (foil.style.display !== "none") { clearFoil(); return; }
+  qi++;
+  if (qi < deck.length) startQuestion();
+  else finish();
+});
+
+function finish() {
+  const [a, b] = score;
+  if (a === b) {
+    $("winner").textContent = "Dead heat";
+    $("winLine").textContent = "Split the bill, or play another round to settle it.";
+    $("loserLine").textContent = "";
+  } else {
+    const w = a > b ? 0 : 1;
+    $("winner").textContent = `${players[w]} wins`;
+    $("winLine").textContent = `Won by ${Math.abs(a - b)} ${Math.abs(a - b) === 1 ? "point" : "points"}.`;
+    $("loserLine").textContent = `${players[1 - w]} buys the next round.`;
+  }
+  $("tally").innerHTML = players.map((n, i) => `<span><b>${score[i]}</b>${esc(n)}</span>`).join("");
+  show("end");
+}
+
+$("again").addEventListener("click", () => show("start"));
+</script>
+</body>
+</html>
